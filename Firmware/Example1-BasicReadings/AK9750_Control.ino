@@ -90,6 +90,7 @@ void refreshData()
 float getTemperature()
 {
   int value = readRegister16(AK9750_TMP);
+
   value >>= 6; //Temp is 10-bit. TMPL0:5 fixed at 0
 
   float temperature = 26.75 + (value * 0.125);
@@ -197,7 +198,7 @@ int readRegister16(byte location)
 {
   Wire.beginTransmission(AK9750_ADDR);
   Wire.write(location);
-  if ( Wire.endTransmission(false) != 0 )
+  if ( Wire.endTransmission() != 0 )
   {
     Serial.println("end error");
   }
