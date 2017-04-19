@@ -5,19 +5,29 @@
   Date: March 10th, 2017
   License: This code is public domain but you buy me a beer if you use this and we meet someday (Beerware license).
 
-  Prints the 
+  This code attempts to calculate derivatives on a single IR channel to see if something has entered
+  or exited the view of the sensor. 
 
-  Hardware Connections (Breakoutboard to Arduino):
-  3.3V = 3.3V
-  GND = GND
-  SDA = A4
-  SCL = A5
+  Open the Serial plotter at 115200 to see the output. Requires Arduino v1.8.1 or above.
+  
+  There are probably better mathematical approaches to filtering and detecting motion events. This is
+  just an example of how you might approach it.
 
-  Serial.print it out at 9600 baud to serial monitor.
+  The basis for this code is based on the code from Robotic Materials and their Robotic Finger Sensor.
+  Check it out, it's pretty neat: https://www.sparkfun.com/products/14200
+
+  Hardware Connections:
+  Attach a Qwiic shield to your RedBoard or Uno.
+  Plug the Qwiic sensor into any port.
+  Serial.print or plotter at 115200bps
 
 */
 
 #include <Wire.h>
+
+#include "SparkFun_AK9750_Arduino_Library.h"
+
+AK9750 movementSensor; //Hook object to the library
 
 unsigned int upValue; // current proximity reading
 unsigned int averageValue;   // low-pass filtered proximity reading
@@ -26,10 +36,9 @@ signed int fa2Derivative;     // Derivative of the FA-II value;
 signed int fa2DerivativeLast;     // Last value of the derivative (for zero-crossing detection)
 signed int sensitivity = 50;  // Sensitivity of touch/release detection, values closer to zero increase sensitivity
 
-#define LOOP_TIME 30  // loop duration in ms
+#define LOOP_TIME 30  // Loop duration in ms. 30ms works well.
 
-// Touch/release detection
-//#define EA 0.3  // exponential average weight parameter / cut-off frequency for high-pass filter
+//Exponential average weight parameter / cut-off frequency for high-pass filter
 //#define EA 0.3  //Very steep
 //#define EA 0.1  //Less steep
 #define EA 0.05  //Less steep
@@ -37,21 +46,20 @@ signed int sensitivity = 50;  // Sensitivity of touch/release detection, values 
 void setup()
 {
   Serial.begin(115200);
-  Serial.println("AK9750 Read Example");
 
   Wire.begin();
 
   //Turn on sensor
-  if (ak9750Setup() == false)
+  if (movementSensor.begin() == false)
   {
     Serial.println("Device not found. Check wiring.");
-    while (1); //Freeze!
+    while (1);
   }
 
-  upValue = getIR3(); //Get initial values
+  upValue = movementSensor.getIR3(); //Get one of the latest IR values
   averageValue = upValue;
   fa2 = 0;
-  refreshData(); //Read dummy register after new data is read
+  movementSensor.refresh(); //Read dummy register after new data is read
 
   Serial.println("AK9750 Human Presence Sensor online");
 }
@@ -60,10 +68,10 @@ void loop()
 {
   unsigned long startTime = millis();
 
-  while (!dataAvailable()) delay(1);
+  while (movementSensor.available() == false) delay(1); //Wait for new data
 
-  upValue = getIR3(); //Get latest IR value
-  refreshData(); //Read dummy register after new data is read
+  upValue = movementSensor.getIR3(); //Get one of the latest IR values
+  movementSensor.refresh(); //Read dummy register after new data is read
 
   fa2DerivativeLast = fa2Derivative;
   fa2Derivative = (signed int) averageValue - upValue - fa2;
@@ -77,24 +85,25 @@ void loop()
   Serial.print(fa2Derivative);
   Serial.print(",");
 
-  sensitivity = 100;
+  //Look to see if the previous fa2Der was below threshold AND current fa2Der is above threshold
+  //Basically, if the sign of the fa2Ders has switched since last reading then we have an event
   if ((fa2DerivativeLast < -sensitivity && fa2Derivative > sensitivity) || (fa2DerivativeLast > sensitivity && fa2Derivative < -sensitivity)) // zero crossing detected
   {
     if (fa2 < -sensitivity) // minimum
     {
-      Serial.print(-1000); //Indicate entering presence
+      Serial.print(-1000); //Cause red line to indicate entering presence
       Serial.print(",");
       //Serial.print("Entered view");
     }
     else if (fa2 > sensitivity) // maximum
     {
-      Serial.print(1000); //Indicate exiting presence
+      Serial.print(1000); //Cause red line to indicate exiting presence
       Serial.print(",");
       //Serial.print("Exited view");
     }
     else
     {
-      Serial.print(0); //Indicate no movement
+      Serial.print(0); //Cause red line to indicate no movement
       Serial.print(",");
       //Serial.print("No Movement");
     }
